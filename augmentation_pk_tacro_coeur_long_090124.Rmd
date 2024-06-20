@@ -1,0 +1,560 @@
+---
+title: "augmentation PK tacro coeur format long"
+author: "jbw + Alex Destere + cb"
+date: "2024-01-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+loading of packages
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(FNN)
+library(ggcorrplot)
+library(GGally)
+library(DataExplorer)
+library(patchwork)
+```
+
+
+loading of the data
+
+```{r}
+# 
+library(readr)
+original_pk <- read_delim("tac_coeur_synthcity_all.csv", 
+                       delim = ",", escape_double = FALSE, 
+                       trim_ws = TRUE) %>% 
+  mutate(Visite = parse_number(Visite)) %>% 
+  # , 
+  #        id = parse_number(id), 
+  #        id = str_c(id, Visite),
+  #        id = as.numeric(id)) %>% 
+  select(-1) %>%
+  rename(conc = OUT) %>% 
+  drop_na(conc)
+
+distinct_id <- original_pk %>% select(id) %>% distinct(id)
+original_pk_id <- original_pk %>% 
+  left_join(distinct_id %>% mutate(id2 = 1:nrow(distinct_id))) %>% 
+  select(-id) %>% 
+  rename(id = id2) %>% 
+  relocate(id)
+original_pk <- original_pk_id %>% select(-id)
+summary(original_pk)
+str(original_pk)
+
+```
+
+export original long and wide
+
+```{r}
+#export for clement
+# write_csv(original_pk, file = "original_pk_long_090124.csv")
+
+```
+
+# Algorithm with knn=5
+
+```{r}
+
+data_normalized <- scale(original_pk)
+pca <- prcomp(data_normalized, scale. = FALSE)# pour selecitonner le nombre de cp rank. = 3
+# Number of neighbors
+k <- 5  # Adjust this based on your requirement
+pca_transformed_data <- pca$x
+knn_result <- get.knn(pca_transformed_data, k)
+
+generate_avatar_weights <- function(knn_result, pca_transformed_data, k) {
+  n <- nrow(pca_transformed_data)
+  avatar_weights <- matrix(nrow = n, ncol = k)
+  
+  for (i in 1:n) {
+    # Step 1: Inverse of Distances
+    distances <- sqrt(rowSums((pca_transformed_data[knn_result$nn.index[i, ], ] - pca_transformed_data[i, ])^2))
+    inverse_distances <- 1 / distances
+    
+    # Step 2: Random Weights
+    set.seed(12)
+    random_weights <- rexp(k, rate = 1)
+    
+    # Step 3: Contribution Factors
+    set.seed(12)
+    shuffled_indices <- sample(k)
+    contribution_factors <- 1 / (2^shuffled_indices)
+    
+    # Step 4: Calculate Weights
+    weights <- inverse_distances * random_weights * contribution_factors
+    
+    # Step 5: Normalize Weights
+    normalized_weights <- weights / sum(weights)
+    
+    avatar_weights[i, ] <- normalized_weights
+  }
+  
+  return(avatar_weights)
+}
+
+
+
+# Generate avatar weights
+avatar_weights <- generate_avatar_weights(knn_result, pca_transformed_data, k)
+
+# Assuming pca_result, avatar_weights, knn_result$nn.index, and pca_transformed_data are already defined
+
+# Function to generate avatars in PCA space based on weights
+generate_avatars_pca_space <- function(pca_transformed_data, knn_indices, weights) {
+  n <- nrow(pca_transformed_data)
+  avatars_pca <- matrix(nrow = n, ncol = ncol(pca_transformed_data))
+  
+  for (i in 1:n) {
+    weighted_avatars <- pca_transformed_data[knn_indices[i, ], ] * weights[i, ]
+    avatars_pca[i, ] <- colSums(weighted_avatars)
+  }
+  
+  return(avatars_pca)
+}
+# Generate avatars in PCA space
+avatars_pca_space <- generate_avatars_pca_space(pca_transformed_data, knn_result$nn.index, avatar_weights)
+
+# Assuming 'aids_pca' is the PCA object and 'avatars_pca_space' contains the avatars in PCA space
+# Inverse PCA transformation
+inverse_pca <- function(pca_object, pca_data) {
+  return(pca_data %*% t(pca_object$rotation) + matrix(pca_object$center, nrow = nrow(pca_data), ncol = ncol(pca_object$rotation), byrow = TRUE))
+}
+avatars_original_scale <- inverse_pca(pca, avatars_pca_space)
+
+# Assuming 'aids_data_normalized' contains the scaling attributes of the original data
+# Inverse normalization (if the original data was normalized)
+avatars_rescaled <- scale(avatars_original_scale, center = FALSE, scale = 1/attr(data_normalized, "scaled:scale"))
+avatars_rescaled <- sweep(avatars_rescaled, 2, attr(data_normalized, "scaled:center"), "+")
+
+avatars_tibble_knn5 <- as_tibble(avatars_rescaled) %>% 
+  mutate(
+    Visite = round(Visite, digits=0),
+    DOSE  = round(DOSE, digits=0.25),
+    AGE   = round(AGE , digits=0),
+    SEX   = round(SEX , digits=0),
+    CYP3A5   = round(CYP3A5, digits=0)) 
+```
+
+Plot of the synthetic and original in the latent space
+
+```{r}
+# Combine original and synthetic data for visualization
+combined_data <- rbind(
+  original_pk %>% mutate(DataType = 'Original'),
+  avatars_tibble_knn5 %>% mutate(DataType = 'Synthetic')
+)
+
+# Perform PCA on combined data
+combined_data_normalized <- scale(combined_data[, -which(names(combined_data) %in% c("DataType", "id"))])
+combined_pca <- prcomp(combined_data_normalized, scale. = FALSE)
+
+# Extract the first two principal components
+combined_pca_data <- data.frame(combined_pca$x[, 1:2])
+combined_pca_data$DataType <- combined_data$DataType
+
+# Plot PCA with color differentiation
+ggplot(combined_pca_data, aes(x = PC1, y = PC2, color = DataType)) +
+  geom_point(alpha = 1) +
+  theme_minimal() +
+  labs(title = "PCA Plot", x = "Principal Component 1", y = "Principal Component 2", color = "Data Type")
+
+```
+
+## Compare the data
+
+### summary dsitribution
+```{r}
+summary(avatars_tibble_knn5)
+summary(original_pk)
+```
+
+### individual data explorer
+
+```{r}
+
+# boxplots
+plot_boxplot(combined_data, by ="DataType") 
+
+# histograms
+
+# Function to create histogram for each continuous variable
+plot_histograms <- function(data, var_name, group_var) {
+  ggplot(data, aes(x = !!sym(var_name), fill = !!sym(group_var))) +
+    geom_histogram(alpha = 0.5,show.legend = FALSE) +
+    labs(x = var_name, y = "Count") +
+    theme_minimal() +
+    ggtitle(paste(var_name))
+}
+
+# Using select_if to identify continuous variables and map to apply the function
+plots <- combined_data %>%
+  select( -Visite, -SEX,-CYP3A5 ) %>% 
+  select_if(is.numeric) %>%
+  names() %>%
+  map(~plot_histograms(combined_data, ., "DataType"))
+
+# Optionally, print or arrange plots (e.g., using gridExtra or patchwork packages)
+
+wrap_plots(plots)
+```
+
+### plot correlation
+```{r}
+
+##Correlation Analysis
+  cor_real <- cor(original_pk, use = "complete.obs")
+  cor_synthetic <- cor(avatars_tibble_knn5, use = "complete.obs")
+  
+# plots
+ggcorrplot(cor_real, hc.order = TRUE, type = "lower",
+           lab = TRUE,  pch.cex = 5,
+  tl.cex = 6, lab_size = 2)
+# plots
+ggcorrplot(cor_synthetic, hc.order = TRUE, type = "lower",
+           lab = TRUE,  pch.cex = 5,
+  tl.cex = 6, lab_size = 2)
+```
+
+Graphical exploration of distribution
+
+```{r}
+group_comparison <-
+   original_pk %>% 
+  mutate(group="original") %>% 
+  bind_rows(avatars_tibble_knn5 %>% 
+              mutate(group="synthetic")) 
+
+pm <- group_comparison %>% ggpairs(
+  ggplot2::aes(colour = group,alpha = 0.5),
+  upper = list(continuous = wrap("cor", size = 1.5)),
+  lower=list(combo=wrap("facethist", binwidth=0.5))) + 
+  theme(strip.text.x = element_text(size = 5),
+           strip.text.y = element_text(size = 5),axis.text = element_text(size = 5))
+pm
+# ggsave("comparaison_distribution_PK_long_knn5.pdf")
+
+```
+
+
+Plot the data
+
+```{r}
+original_pk %>% mutate(group="original") %>% 
+  bind_rows(avatars_tibble_knn5 %>% mutate(group="synthetic")) %>% 
+              ggplot(aes(x = TIME, y = conc, color = group)) + geom_point() +
+  geom_point(alpha = 0.2, size = 3) +
+  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+  theme_bw()
+
+
+original_pk %>% mutate(group="original") %>% 
+  bind_rows(avatars_tibble_knn5 %>% 
+              mutate(group="synthetic")) %>%
+  # mutate(id = as.factor(id)) %>% 
+  ggplot(aes(x = TIME, y = conc)) +  
+  geom_line(show.legend = FALSE)+
+  geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
+  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+  theme_bw() + facet_wrap(~group)
+```
+
+# Python script for TVAE and ct-GAN using Synthcity
+
+```{python, eval = FALSE}
+
+ from synthcity.plugins.core.dataloader import SurvivalAnalysisDataLoader, GenericDataLoader
+
+ from synthcity.plugins import Plugins
+ import pandas as pd
+
+
+ donnees=pd.read_csv("../Donnees/original_pk.csv")
+ n_generate=donnees.shape[0]
+
+ pk_dl=GenericDataLoader(donnees,random_state=0)
+
+
+## same size ct-gan or increased by 4
+syn_model = Plugins().get("ctgan",random_state=0)
+ syn_model.fit(pk_dl)
+ syn_data=syn_model.generate(count=n_generate,random_state=1)
+ syn_data.data.to_csv(path_or_buf="pkpop_ctgan_data.dat",index=False)
+
+ syn_data=syn_model.generate(count=4*n_generate,random_state=2)
+ syn_data.data.to_csv(path_or_buf="pkpop_ctgan_data_large.dat",index=False)
+
+##same size tvae or increased by 4
+ syn_model = Plugins().get("tvae",random_state=0)
+ syn_model.fit(pk_dl)
+ syn_data=syn_model.generate(count=n_generate,random_state=3)
+ syn_data.data.to_csv(path_or_buf="pkpop_tvae_data.dat",index=False)
+
+ syn_data=syn_model.generate(count=4*n_generate,random_state=4)
+ syn_data.data.to_csv(path_or_buf="pkpop_tvae_data_large.dat",index=False)
+```
+
+# Privacy metrics using python
+
+```{python, eval = FALSE}
+import sys
+import os
+sys.path.append(os.path.expanduser("~/local/src/avatar-paper-main"))
+
+import synthcity
+import pandas as pd
+import synthcity.metrics
+
+import synthcity.metrics.eval_privacy
+import sklearn 
+import sklearn.model_selection
+
+import sksurv
+import sksurv.ensemble
+
+import numpy as np
+import saiph
+from metrics.privacy_metrics.dcr_nndr import get_dcr, get_nndr
+from metrics.privacy_metrics.get_column_type import get_categorical_continuous
+
+
+
+donnees_origin=pd.read_csv("../Donnees/original_pk.csv",sep=",")
+#donnees_avatar_knn3=pd.read_csv("../../Anonym_sfpt24/Donnees/avatar_sfpt_knn3_data_augmented.csv").drop(columns=columns_drop_list+["iter_"])
+donnees_avatar_knn5=pd.read_csv("../Donnees/wide_tacro_coeur_synthetic_knn5.csv")
+donnees_avatar_knn5_large=pd.read_csv("../Donnees/wide_tacro_coeur_synthetic_augmented_knn5.csv").drop(columns=["iter_"])
+
+#donnees_avatar_knn10=pd.read_csv("../../Anonym_sfpt24/Donnees/avatar_sfpt_knn10_data_augmented.csv").drop(columns=columns_drop_list+["iter_"])
+donnees_avatar_knn15=pd.read_csv("../Donnees/wide_tacro_coeur_synthetic_knn15.csv")
+donnees_avatar_knn15_large=pd.read_csv("../Donnees/wide_tacro_coeur_synthetic_augmented_knn15.csv").drop(columns=["iter_"])
+
+
+#donnees_avatar_knn20=pd.read_csv("../../Anonym_sfpt24/Donnees/avatar_sfpt_knn20_data_augmented.csv").drop(columns=columns_drop_list+["iter_"])
+donnees_infl_ctgan=pd.read_csv("../Generate_ctgan_pk/pkpop_ctgan_data_v240108.dat")
+donnees_infl_ctgan_large=pd.read_csv("../Generate_ctgan_pk/pkpop_ctgan_data_large_v240108.dat")
+donnees_infl_tvae=pd.read_csv("../Generate_ctgan_pk/pkpop_tvae_data_v240108.dat")
+donnees_infl_tvae_large=pd.read_csv("../Generate_ctgan_pk/pkpop_tvae_data_large_v240108.dat")
+
+# calculation of delta presence
+dp_object=synthcity.metrics.eval_privacy.DeltaPresence()
+dp_object.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5))
+dp_object.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5_large))
+dp_object.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15))
+dp_object.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15_large))
+dp_object.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan))
+dp_object.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan_large))
+dp_object.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae))
+dp_object.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae_large))
+
+# xgb to detect true vs synthetic data
+detection_xgb=synthcity.metrics.eval_detection.SyntheticDetectionXGB()
+detection_xgb.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5))
+detection_xgb.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5_large))
+detection_xgb.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15))
+detection_xgb.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15_large))
+detection_xgb.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan))
+detection_xgb.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan_large))
+detection_xgb.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae))
+detection_xgb.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae_large))
+
+# mlp to detect true vs synthetic data
+detection_mlp=synthcity.metrics.eval_detection.SyntheticDetectionMLP()
+detection_mlp.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5))
+detection_mlp.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5_large))
+detection_mlp.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15))
+detection_mlp.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15_large))
+detection_mlp.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan))
+detection_mlp.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan_large))
+detection_mlp.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae))
+detection_mlp.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae_large))
+
+synthcity.metrics.eval_performance.XGBSurvivalAnalysis()
+
+# clauclaiton k anonymity
+kanonym=synthcity.metrics.eval_privacy.kAnonymization()
+kanonym.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5))
+kanonym.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5_large))
+kanonym.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15))
+kanonym.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15_large))
+kanonym.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan))
+kanonym.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan_large))
+kanonym.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae))
+kanonym.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae_large))
+
+# calculation kolmogorof smirnof
+
+ks_test=synthcity.metrics.eval_statistical.KolmogorovSmirnovTest()
+ks_test.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5))
+ks_test.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5_large))
+ks_test.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15))
+ks_test.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15_large))
+ks_test.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan))
+ks_test.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan_large))
+ks_test.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae))
+ks_test.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae_large))
+
+# caluclation kullback leiber distance
+kl_dist=synthcity.metrics.eval_statistical.InverseKLDivergence()
+kl_dist.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5))
+kl_dist.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5_large))
+kl_dist.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15))
+kl_dist.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15_large))
+kl_dist.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan))
+kl_dist.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan_large))
+kl_dist.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae))
+kl_dist.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae_large))
+
+# calculaiton max discrepany
+max_discrepancy=synthcity.metrics.eval_statistical.MaximumMeanDiscrepancy()
+max_discrepancy.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5))
+max_discrepancy.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn5_large))
+max_discrepancy.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15))
+max_discrepancy.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_avatar_knn15_large))
+max_discrepancy.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan))
+max_discrepancy.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_ctgan_large))
+max_discrepancy.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae))
+max_discrepancy.evaluate(X_gt=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_origin),X_syn=synthcity.plugins.core.dataloader.GenericDataLoader(donnees_infl_tvae_large))
+
+# calculaiton dcr and nndr
+data_by_algo_pkpop={"avatar_knn5":donnees_avatar_knn5,"avatar_knn5_large":donnees_avatar_knn5_large,"avatar_knn15":donnees_avatar_knn15,"avatar_knn15_large":donnees_avatar_knn15_large,"ctgan":donnees_infl_ctgan,"ctgan_large":donnees_infl_ctgan_large}
+synth_dcr_dict=dict()
+synth_nndr_dict=dict()
+for algo in data_by_algo_pkpop.keys():
+  train_coord, model = saiph.fit_transform(data_by_algo_pkpop[algo])
+  synth_coord = saiph.transform(data_by_algo_pkpop[algo],model)
+  synth_dcr_dict[algo]=np.mean(np.array(get_dcr(data_by_algo_pkpop[algo],synth_coord)))
+  synth_nndr_dict[algo]=np.mean(np.array(get_nndr(data_by_algo_pkpop[algo],synth_coord)))
+
+```
+
+
+## calculation metrics privacy DCR, NNDR
+
+```{r}
+#knn5
+metric_avatar_knn5 <- read_csv("/Users/woillp01/Documents/avatar/metric_privacy_alex/Metrics_dcr_nndr_pk_alex/metrics_dcr_nndr_avatar_knn5_pk_alex.csv") 
+
+metric_knn5 <- metric_avatar_knn5 %>% 
+  summarise(
+    across(
+      everything(),
+      list(
+        min = ~ quantile(., probs = 0),
+        p5 = ~ quantile(., probs = 0.05),
+        p25 = ~ quantile(., probs = 0.25),
+        p50 = ~ quantile(., probs = 0.5),
+        p75 = ~ quantile(., probs = 0.75),
+        p95 = ~ quantile(., probs = 0.95),
+        max = ~ quantile(., probs = 1)
+      )
+    )
+  )
+knitr::kable(metric_knn5, "simple")
+
+#knn15 
+metric_avatar_knn15 <- read_csv("/Users/woillp01/Documents/avatar/metric_privacy_alex/Metrics_dcr_nndr_pk_alex/metrics_dcr_nndr_avatar_knn15_pk_alex.csv")
+metric_knn15 <- metric_avatar_knn15 %>% summarise(
+    across(
+      everything(),
+      list(
+        min = ~ quantile(., probs = 0),
+        p5 = ~ quantile(., probs = 0.05),
+        p25 = ~ quantile(., probs = 0.25),
+        p50 = ~ quantile(., probs = 0.5),
+        p75 = ~ quantile(., probs = 0.75),
+        p95 = ~ quantile(., probs = 0.95),
+        max = ~ quantile(., probs = 1)
+      )
+    )
+  )
+knitr::kable(metric_knn15, "simple")
+
+#survae
+metrics_vae <- read_csv("/Users/woillp01/Documents/avatar/metric_privacy_alex/Metrics_dcr_nndr_pk_alex/metrics_dcr_nndr_tvae_pk_alex.csv") 
+
+metric_vae <- metrics_vae %>% 
+  summarise(
+    across(
+      everything(),
+      list(
+        min = ~ quantile(., probs = 0),
+        p5 = ~ quantile(., probs = 0.05),
+        p25 = ~ quantile(., probs = 0.25),
+        p50 = ~ quantile(., probs = 0.5),
+        p75 = ~ quantile(., probs = 0.75),
+        p95 = ~ quantile(., probs = 0.95),
+        max = ~ quantile(., probs = 1)
+      )
+    )
+  )
+knitr::kable(metric_vae, "simple")
+
+
+
+#ctgan
+metrics_ctgan <- read_csv("/Users/woillp01/Documents/avatar/metric_privacy_alex/Metrics_dcr_nndr_pk_alex/metrics_dcr_nndr_ctgan_pk_alex.csv") 
+
+metric_ctgan <- metrics_ctgan %>% 
+     summarise(
+    across(
+      everything(),
+      list(
+        min = ~ quantile(., probs = 0),
+        p5 = ~ quantile(., probs = 0.05),
+        p25 = ~ quantile(., probs = 0.25),
+        p50 = ~ quantile(., probs = 0.5),
+        p75 = ~ quantile(., probs = 0.75),
+        p95 = ~ quantile(., probs = 0.95),
+        max = ~ quantile(., probs = 1)
+      )
+    )
+  )
+knitr::kable(metric_ctgan, "simple")
+
+```
+
+plot of the metrics distribution
+
+```{r}
+metrics_plot <- metric_avatar_knn5 %>% mutate(type = "knn5") %>% 
+  bind_rows(metric_avatar_knn15 %>% mutate(type = "knn15")) %>% 
+  bind_rows(metrics_vae %>% mutate(type = "vae")) %>% 
+  bind_rows(metrics_ctgan %>% mutate(type = "ctgan")) 
+
+# dcr
+ggplot(metrics_plot, aes(x = dcr, fill = type, color = type, alpha = 0.5)) +
+  geom_density(adjust = 1.5) +
+  scale_alpha_identity() +
+  labs(title = "DCR density Distribution by Group",
+       x = "DCR",
+       y = "Density",
+       fill = "Group",
+       color = "Group") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+# nndr
+ggplot(metrics_plot, aes(x = nndr, fill = type, color = type, alpha = 0.5)) +
+  geom_density(adjust = 1.5) +
+  scale_alpha_identity() +
+  labs(title = "NNDR density distribution per group",
+       x = "NNDR",
+       y = "Density",
+       fill = "Group",
+       color = "Group") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+
+
+```
+
+
+
