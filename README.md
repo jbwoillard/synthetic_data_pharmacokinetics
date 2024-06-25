@@ -1,2 +1,2 @@
 # synthetic_data_pharmacokinetics
-Code for the paper about synthetic data in pharmacokinetics: "Can synthetic data be the key to overcoming data sharing and lack of data in pharmacometrics? A case study of tacrolimus in heart transplant patients". The code is described in the html Rmd file
+Code for the paper about synthetic data in pharmacokinetics: "Can synthetic data be the key to overcoming data sharing and lack of data in pharmacometrics? A case study of tacrolimus in heart transplant patients". The code is described in the html & Rmd file. The 221223 file contain the code for all the algorithms and generaiotn of plots. The 090124 is an example of avatar for k=5 and the python code for synhtcity allowing to generate the tvae and ctgan files.
