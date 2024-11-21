@@ -17,14 +17,15 @@ library(tidymodels)
 library(FNN)
 library(ggcorrplot)
 library(GGally)
+library(patchwork)
 ```
 Evaluation number of data with not exact time for which time had to be rounded to the closest time
 
 ```{r}
-library(readr)
-tac_coeur_a_changer <- read_csv("C:/Users/woillp01/Desktop/MPA_data_augmentation_pk/tac_coeur_a_changer.csv") 
-
-tac_coeur_a_changer %>% mutate(TIME = as.factor(TIME)) %>% count(TIME) %>% filter(n<20) %>% summarise(sum_n = sum(n)/nrow(tac_coeur_a_changer))
+# library(readr)
+# tac_coeur_a_changer <- read_csv("C:/Users/woillp01/Desktop/MPA_data_augmentation_pk/tac_coeur_a_changer.csv") 
+# 
+# tac_coeur_a_changer %>% mutate(TIME = as.factor(TIME)) %>% count(TIME) %>% filter(n<20) %>% summarise(sum_n = sum(n)/nrow(tac_coeur_a_changer))
 
 ```
 
@@ -446,98 +447,98 @@ write_csv(avatars_tibble_knn15, file = "wide_tacro_coeur_synthetic_knn15.csv")
 # Data augmentation knn = 5
 
 ```{r}
-## data augmentation knn5
-data_augment_avatar <- function(x) {
-  data_normalized <- scale(original_pk)
-  pca <- prcomp(data_normalized, scale. = FALSE)# pour selecitonner le nombre de cp rank. = 3
-  # Number of neighbors
-  k <- 5  # Adjust this based on your requirement
-  pca_transformed_data <- pca$x
-  knn_result <- get.knn(pca_transformed_data, k)
-  
-  generate_avatar_weights <- function(knn_result, pca_transformed_data, k) {
-    n <- nrow(pca_transformed_data)
-    avatar_weights <- matrix(nrow = n, ncol = k)
-    
-    for (i in 1:n) {
-      # Step 1: Inverse of Distances
-      distances <- sqrt(rowSums((pca_transformed_data[knn_result$nn.index[i, ], ] - pca_transformed_data[i, ])^2))
-      inverse_distances <- 1 / distances
-      
-      # Step 2: Random Weights
-      set.seed( str_c(1,x))
-      random_weights <- rexp(k, rate = 1)
-      
-      # Step 3: Contribution Factors
-      set.seed( str_c(1,x))
-      shuffled_indices <- sample(k)
-      contribution_factors <- 1 / (2^shuffled_indices)
-      
-      # Step 4: Calculate Weights
-      weights <- inverse_distances * random_weights * contribution_factors
-      
-      # Step 5: Normalize Weights
-      normalized_weights <- weights / sum(weights)
-      
-      avatar_weights[i, ] <- normalized_weights
-    }
-    
-    return(avatar_weights)
-  }
-  
-  
-  
-  # Generate avatar weights
-  avatar_weights <- generate_avatar_weights(knn_result, pca_transformed_data, k)
-  
-  # Assuming pca_result, avatar_weights, knn_result$nn.index, and pca_transformed_data are already defined
-  
-  # Function to generate avatars in PCA space based on weights
-  generate_avatars_pca_space <- function(pca_transformed_data, knn_indices, weights) {
-    n <- nrow(pca_transformed_data)
-    avatars_pca <- matrix(nrow = n, ncol = ncol(pca_transformed_data))
-    
-    for (i in 1:n) {
-      weighted_avatars <- pca_transformed_data[knn_indices[i, ], ] * weights[i, ]
-      avatars_pca[i, ] <- colSums(weighted_avatars)
-    }
-    
-    return(avatars_pca)
-  }
-  # Generate avatars in PCA space
-  avatars_pca_space <- generate_avatars_pca_space(pca_transformed_data, knn_result$nn.index, avatar_weights)
-  # Assuming 'aids_pca' is the PCA object and 'avatars_pca_space' contains the avatars in PCA space
-  # Inverse PCA transformation
-  inverse_pca <- function(pca_object, pca_data) {
-    return(pca_data %*% t(pca_object$rotation) + matrix(pca_object$center, nrow = nrow(pca_data), ncol = ncol(pca_object$rotation), byrow = TRUE))
-  }
-  avatars_original_scale <- inverse_pca(pca, avatars_pca_space)
-  
-  # Assuming 'aids_data_normalized' contains the scaling attributes of the original data
-  # Inverse normalization (if the original data was normalized)
-  avatars_rescaled <- scale(avatars_original_scale, center = FALSE, scale = 1/attr(data_normalized, "scaled:scale"))
-  avatars_rescaled <- sweep(avatars_rescaled, 2, attr(data_normalized, "scaled:center"), "+")
-  
-  avatars_tibble <- as_tibble(avatars_rescaled) %>% 
-  mutate(
-    Visite = round(Visite, digits=0),
-    DOSE  = round(DOSE, digits=0.25),
-    AGE   = round(AGE , digits=0),
-    SEX   = if_else(SEX>0.7 ,1,0),
-    CYP3A5   = if_else(CYP3A5>0.2,1,0))
-}
-
-iteration <- c(1:4)
-
-augmented_data_5 <- map_dfr(iteration, data_augment_avatar, .id = "iter_")
+# ## data augmentation knn5
+# data_augment_avatar <- function(x) {
+#   data_normalized <- scale(original_pk)
+#   pca <- prcomp(data_normalized, scale. = FALSE)# pour selecitonner le nombre de cp rank. = 3
+#   # Number of neighbors
+#   k <- 5  # Adjust this based on your requirement
+#   pca_transformed_data <- pca$x
+#   knn_result <- get.knn(pca_transformed_data, k)
+#   
+#   generate_avatar_weights <- function(knn_result, pca_transformed_data, k) {
+#     n <- nrow(pca_transformed_data)
+#     avatar_weights <- matrix(nrow = n, ncol = k)
+#     
+#     for (i in 1:n) {
+#       # Step 1: Inverse of Distances
+#       distances <- sqrt(rowSums((pca_transformed_data[knn_result$nn.index[i, ], ] - pca_transformed_data[i, ])^2))
+#       inverse_distances <- 1 / distances
+#       
+#       # Step 2: Random Weights
+#       set.seed( str_c(1,x))
+#       random_weights <- rexp(k, rate = 1)
+#       
+#       # Step 3: Contribution Factors
+#       set.seed( str_c(1,x))
+#       shuffled_indices <- sample(k)
+#       contribution_factors <- 1 / (2^shuffled_indices)
+#       
+#       # Step 4: Calculate Weights
+#       weights <- inverse_distances * random_weights * contribution_factors
+#       
+#       # Step 5: Normalize Weights
+#       normalized_weights <- weights / sum(weights)
+#       
+#       avatar_weights[i, ] <- normalized_weights
+#     }
+#     
+#     return(avatar_weights)
+#   }
+#   
+#   
+#   
+#   # Generate avatar weights
+#   avatar_weights <- generate_avatar_weights(knn_result, pca_transformed_data, k)
+#   
+#   # Assuming pca_result, avatar_weights, knn_result$nn.index, and pca_transformed_data are already defined
+#   
+#   # Function to generate avatars in PCA space based on weights
+#   generate_avatars_pca_space <- function(pca_transformed_data, knn_indices, weights) {
+#     n <- nrow(pca_transformed_data)
+#     avatars_pca <- matrix(nrow = n, ncol = ncol(pca_transformed_data))
+#     
+#     for (i in 1:n) {
+#       weighted_avatars <- pca_transformed_data[knn_indices[i, ], ] * weights[i, ]
+#       avatars_pca[i, ] <- colSums(weighted_avatars)
+#     }
+#     
+#     return(avatars_pca)
+#   }
+#   # Generate avatars in PCA space
+#   avatars_pca_space <- generate_avatars_pca_space(pca_transformed_data, knn_result$nn.index, avatar_weights)
+#   # Assuming 'aids_pca' is the PCA object and 'avatars_pca_space' contains the avatars in PCA space
+#   # Inverse PCA transformation
+#   inverse_pca <- function(pca_object, pca_data) {
+#     return(pca_data %*% t(pca_object$rotation) + matrix(pca_object$center, nrow = nrow(pca_data), ncol = ncol(pca_object$rotation), byrow = TRUE))
+#   }
+#   avatars_original_scale <- inverse_pca(pca, avatars_pca_space)
+#   
+#   # Assuming 'aids_data_normalized' contains the scaling attributes of the original data
+#   # Inverse normalization (if the original data was normalized)
+#   avatars_rescaled <- scale(avatars_original_scale, center = FALSE, scale = 1/attr(data_normalized, "scaled:scale"))
+#   avatars_rescaled <- sweep(avatars_rescaled, 2, attr(data_normalized, "scaled:center"), "+")
+#   
+#   avatars_tibble <- as_tibble(avatars_rescaled) %>% 
+#   mutate(
+#     Visite = round(Visite, digits=0),
+#     DOSE  = round(DOSE, digits=0.25),
+#     AGE   = round(AGE , digits=0),
+#     SEX   = if_else(SEX>0.7 ,1,0),
+#     CYP3A5   = if_else(CYP3A5>0.2,1,0))
+# }
+# 
+# iteration <- c(1:4)
+# 
+# augmented_data_5 <- map_dfr(iteration, data_augment_avatar, .id = "iter_")
 ```
 
 ## Compare the data
 
 ### summary dsitribution
 ```{r}
-summary(augmented_data_5)
-summary(original_pk)
+# summary(augmented_data_5)
+# summary(original_pk)
 ```
 
 
@@ -545,180 +546,180 @@ summary(original_pk)
 ### plot correlation
 ```{r}
 
-##Correlation Analysis
-  cor_real <- cor(original_pk, use = "complete.obs")
-  cor_synthetic <- cor(augmented_data_5 %>% select(-iter_), use = "complete.obs")
-  
-# plots
-ggcorrplot(cor_real, hc.order = TRUE, type = "lower",
-           lab = TRUE,  pch.cex = 5,
-  tl.cex = 6, lab_size = 2)
-# plots
-ggcorrplot(cor_synthetic, hc.order = TRUE, type = "lower",
-           lab = TRUE,  pch.cex = 5,
-  tl.cex = 6, lab_size = 2)
+# ##Correlation Analysis
+#   cor_real <- cor(original_pk, use = "complete.obs")
+#   cor_synthetic <- cor(augmented_data_5 %>% select(-iter_), use = "complete.obs")
+#   
+# # plots
+# ggcorrplot(cor_real, hc.order = TRUE, type = "lower",
+#            lab = TRUE,  pch.cex = 5,
+#   tl.cex = 6, lab_size = 2)
+# # plots
+# ggcorrplot(cor_synthetic, hc.order = TRUE, type = "lower",
+#            lab = TRUE,  pch.cex = 5,
+#   tl.cex = 6, lab_size = 2)
 ```
 
 Graphical exploration of distribution
 
 ```{r}
-group_comparison <-
-   original_pk %>% 
-  mutate(group="original") %>% 
-  bind_rows(augmented_data_5 %>% 
-              mutate(group="synthetic")) %>% 
-  select(-iter_)
-
-pm <- group_comparison %>% ggpairs(
-  ggplot2::aes(colour = group,alpha = 0.5),
-  upper = list(continuous = wrap("cor", size = 1.5)),
-  lower=list(combo=wrap("facethist", binwidth=0.5))) + 
-  theme(strip.text.x = element_text(size = 5),
-           strip.text.y = element_text(size = 5),axis.text = element_text(size = 5))
-pm
-ggsave("comparaison_distribution_PK_augmented_knn5.pdf")
+# group_comparison <-
+#    original_pk %>% 
+#   mutate(group="original") %>% 
+#   bind_rows(augmented_data_5 %>% 
+#               mutate(group="synthetic")) %>% 
+#   select(-iter_)
+# 
+# pm <- group_comparison %>% ggpairs(
+#   ggplot2::aes(colour = group,alpha = 0.5),
+#   upper = list(continuous = wrap("cor", size = 1.5)),
+#   lower=list(combo=wrap("facethist", binwidth=0.5))) + 
+#   theme(strip.text.x = element_text(size = 5),
+#            strip.text.y = element_text(size = 5),axis.text = element_text(size = 5))
+# pm
+# ggsave("comparaison_distribution_PK_augmented_knn5.pdf")
 
 ```
 
 Process and plot the data
 
 ```{r}
-avatar_augmented_knn5 <- augmented_data_5 %>% 
-    mutate(id = 1:nrow(augmented_data_5)) %>% 
-  pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
-  mutate(time = as.numeric(time)) %>% 
-  arrange(Visite, DOSE,AGE, time)
-original_pk_long <- original_pk %>% 
-   mutate(id = c(30:58)) %>% 
-  pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
-  mutate(time = as.numeric(time)) %>% 
-  arrange(Visite, DOSE,AGE, time)
+# avatar_augmented_knn5 <- augmented_data_5 %>% 
+#     mutate(id = 1:nrow(augmented_data_5)) %>% 
+#   pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
+#   mutate(time = as.numeric(time)) %>% 
+#   arrange(Visite, DOSE,AGE, time)
+# original_pk_long <- original_pk %>% 
+#    mutate(id = c(30:58)) %>% 
+#   pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
+#   mutate(time = as.numeric(time)) %>% 
+#   arrange(Visite, DOSE,AGE, time)
 
 ```
 
 Plots
 ```{r}
-## plots
-original_pk_long %>% mutate(group="original") %>% 
-  bind_rows(avatar_augmented_knn5 %>% mutate(group="synthetic")) %>% 
-  ggplot(aes(x = time, y = DV, color = group)) + 
-  geom_point(alpha = 0.2, size = 3) +
-  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
-  theme_bw()
-
-original_pk_long %>% mutate(group="original") %>% 
-  bind_rows(avatar_augmented_knn5 %>% 
-              mutate(group="synthetic")) %>% 
-  mutate(id = as.factor(id)) %>% 
-  ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
-  geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
-  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
-  theme_bw() + facet_wrap(~group)
+# ## plots
+# original_pk_long %>% mutate(group="original") %>% 
+#   bind_rows(avatar_augmented_knn5 %>% mutate(group="synthetic")) %>% 
+#   ggplot(aes(x = time, y = DV, color = group)) + 
+#   geom_point(alpha = 0.2, size = 3) +
+#   labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+#   theme_bw()
+# 
+# original_pk_long %>% mutate(group="original") %>% 
+#   bind_rows(avatar_augmented_knn5 %>% 
+#               mutate(group="synthetic")) %>% 
+#   mutate(id = as.factor(id)) %>% 
+#   ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
+#   geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
+#   labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+#   theme_bw() + facet_wrap(~group)
 ```
 
 
 Export long and wide
 
 ```{r}
-write_csv(avatar_augmented_knn5, file = "tacro_coeur_synthetic_augmented_knn5.csv")
-write_csv(augmented_data_5, file = "wide_tacro_coeur_synthetic_augmented_knn5.csv")
+# write_csv(avatar_augmented_knn5, file = "tacro_coeur_synthetic_augmented_knn5.csv")
+# write_csv(augmented_data_5, file = "wide_tacro_coeur_synthetic_augmented_knn5.csv")
 ```
 
 # Data augmentation knn = 15
 
 ```{r}
-## data augmentation knn5
-data_augment_avatar <- function(x) {
-  data_normalized <- scale(original_pk)
-  pca <- prcomp(data_normalized, scale. = FALSE)# pour selecitonner le nombre de cp rank. = 3
-  # Number of neighbors
-  k <- 15  # Adjust this based on your requirement
-  pca_transformed_data <- pca$x
-  knn_result <- get.knn(pca_transformed_data, k)
-  
-  generate_avatar_weights <- function(knn_result, pca_transformed_data, k) {
-    n <- nrow(pca_transformed_data)
-    avatar_weights <- matrix(nrow = n, ncol = k)
-    
-    for (i in 1:n) {
-      # Step 1: Inverse of Distances
-      distances <- sqrt(rowSums((pca_transformed_data[knn_result$nn.index[i, ], ] - pca_transformed_data[i, ])^2))
-      inverse_distances <- 1 / distances
-      
-      # Step 2: Random Weights
-      set.seed( str_c(1,x))
-      random_weights <- rexp(k, rate = 1)
-      
-      # Step 3: Contribution Factors
-      set.seed( str_c(1,x))
-      shuffled_indices <- sample(k)
-      contribution_factors <- 1 / (2^shuffled_indices)
-      
-      # Step 4: Calculate Weights
-      weights <- inverse_distances * random_weights * contribution_factors
-      
-      # Step 5: Normalize Weights
-      normalized_weights <- weights / sum(weights)
-      
-      avatar_weights[i, ] <- normalized_weights
-    }
-    
-    return(avatar_weights)
-  }
-  
-  
-  
-  # Generate avatar weights
-  avatar_weights <- generate_avatar_weights(knn_result, pca_transformed_data, k)
-  
-  # Assuming pca_result, avatar_weights, knn_result$nn.index, and pca_transformed_data are already defined
-  
-  # Function to generate avatars in PCA space based on weights
-  generate_avatars_pca_space <- function(pca_transformed_data, knn_indices, weights) {
-    n <- nrow(pca_transformed_data)
-    avatars_pca <- matrix(nrow = n, ncol = ncol(pca_transformed_data))
-    
-    for (i in 1:n) {
-      weighted_avatars <- pca_transformed_data[knn_indices[i, ], ] * weights[i, ]
-      avatars_pca[i, ] <- colSums(weighted_avatars)
-    }
-    
-    return(avatars_pca)
-  }
-  # Generate avatars in PCA space
-  avatars_pca_space <- generate_avatars_pca_space(pca_transformed_data, knn_result$nn.index, avatar_weights)
-  # Assuming 'aids_pca' is the PCA object and 'avatars_pca_space' contains the avatars in PCA space
-  # Inverse PCA transformation
-  inverse_pca <- function(pca_object, pca_data) {
-    return(pca_data %*% t(pca_object$rotation) + matrix(pca_object$center, nrow = nrow(pca_data), ncol = ncol(pca_object$rotation), byrow = TRUE))
-  }
-  avatars_original_scale <- inverse_pca(pca, avatars_pca_space)
-  
-  # Assuming 'aids_data_normalized' contains the scaling attributes of the original data
-  # Inverse normalization (if the original data was normalized)
-  avatars_rescaled <- scale(avatars_original_scale, center = FALSE, scale = 1/attr(data_normalized, "scaled:scale"))
-  avatars_rescaled <- sweep(avatars_rescaled, 2, attr(data_normalized, "scaled:center"), "+")
-  
-  avatars_tibble <- as_tibble(avatars_rescaled) %>% 
-  mutate(
-    Visite = round(Visite, digits=0),
-    DOSE  = round(DOSE, digits=0.25),
-    AGE   = round(AGE , digits=0),
-    SEX   = if_else(SEX>0.7 ,1,0),
-    CYP3A5   = if_else(CYP3A5>0.2,1,0))
-}
-
-iteration <- c(1:4)
-
-augmented_data_15 <- map_dfr(iteration, data_augment_avatar, .id = "iter_")
+# ## data augmentation knn5
+# data_augment_avatar <- function(x) {
+#   data_normalized <- scale(original_pk)
+#   pca <- prcomp(data_normalized, scale. = FALSE)# pour selecitonner le nombre de cp rank. = 3
+#   # Number of neighbors
+#   k <- 15  # Adjust this based on your requirement
+#   pca_transformed_data <- pca$x
+#   knn_result <- get.knn(pca_transformed_data, k)
+#   
+#   generate_avatar_weights <- function(knn_result, pca_transformed_data, k) {
+#     n <- nrow(pca_transformed_data)
+#     avatar_weights <- matrix(nrow = n, ncol = k)
+#     
+#     for (i in 1:n) {
+#       # Step 1: Inverse of Distances
+#       distances <- sqrt(rowSums((pca_transformed_data[knn_result$nn.index[i, ], ] - pca_transformed_data[i, ])^2))
+#       inverse_distances <- 1 / distances
+#       
+#       # Step 2: Random Weights
+#       set.seed( str_c(1,x))
+#       random_weights <- rexp(k, rate = 1)
+#       
+#       # Step 3: Contribution Factors
+#       set.seed( str_c(1,x))
+#       shuffled_indices <- sample(k)
+#       contribution_factors <- 1 / (2^shuffled_indices)
+#       
+#       # Step 4: Calculate Weights
+#       weights <- inverse_distances * random_weights * contribution_factors
+#       
+#       # Step 5: Normalize Weights
+#       normalized_weights <- weights / sum(weights)
+#       
+#       avatar_weights[i, ] <- normalized_weights
+#     }
+#     
+#     return(avatar_weights)
+#   }
+#   
+#   
+#   
+#   # Generate avatar weights
+#   avatar_weights <- generate_avatar_weights(knn_result, pca_transformed_data, k)
+#   
+#   # Assuming pca_result, avatar_weights, knn_result$nn.index, and pca_transformed_data are already defined
+#   
+#   # Function to generate avatars in PCA space based on weights
+#   generate_avatars_pca_space <- function(pca_transformed_data, knn_indices, weights) {
+#     n <- nrow(pca_transformed_data)
+#     avatars_pca <- matrix(nrow = n, ncol = ncol(pca_transformed_data))
+#     
+#     for (i in 1:n) {
+#       weighted_avatars <- pca_transformed_data[knn_indices[i, ], ] * weights[i, ]
+#       avatars_pca[i, ] <- colSums(weighted_avatars)
+#     }
+#     
+#     return(avatars_pca)
+#   }
+#   # Generate avatars in PCA space
+#   avatars_pca_space <- generate_avatars_pca_space(pca_transformed_data, knn_result$nn.index, avatar_weights)
+#   # Assuming 'aids_pca' is the PCA object and 'avatars_pca_space' contains the avatars in PCA space
+#   # Inverse PCA transformation
+#   inverse_pca <- function(pca_object, pca_data) {
+#     return(pca_data %*% t(pca_object$rotation) + matrix(pca_object$center, nrow = nrow(pca_data), ncol = ncol(pca_object$rotation), byrow = TRUE))
+#   }
+#   avatars_original_scale <- inverse_pca(pca, avatars_pca_space)
+#   
+#   # Assuming 'aids_data_normalized' contains the scaling attributes of the original data
+#   # Inverse normalization (if the original data was normalized)
+#   avatars_rescaled <- scale(avatars_original_scale, center = FALSE, scale = 1/attr(data_normalized, "scaled:scale"))
+#   avatars_rescaled <- sweep(avatars_rescaled, 2, attr(data_normalized, "scaled:center"), "+")
+#   
+#   avatars_tibble <- as_tibble(avatars_rescaled) %>% 
+#   mutate(
+#     Visite = round(Visite, digits=0),
+#     DOSE  = round(DOSE, digits=0.25),
+#     AGE   = round(AGE , digits=0),
+#     SEX   = if_else(SEX>0.7 ,1,0),
+#     CYP3A5   = if_else(CYP3A5>0.2,1,0))
+# }
+# 
+# iteration <- c(1:4)
+# 
+# augmented_data_15 <- map_dfr(iteration, data_augment_avatar, .id = "iter_")
 ```
 
 ## Compare the data
 
 ### summary dsitribution
 ```{r}
-summary(augmented_data_15)
-summary(original_pk)
+# summary(augmented_data_15)
+# summary(original_pk)
 ```
 
 
@@ -726,83 +727,83 @@ summary(original_pk)
 ### plot correlation
 ```{r}
 
-##Correlation Analysis
-  cor_real <- cor(original_pk, use = "complete.obs")
-  cor_synthetic <- cor(augmented_data_15 %>% select(-iter_), use = "complete.obs")
-  
-# plots
-ggcorrplot(cor_real, hc.order = TRUE, type = "lower",
-           lab = TRUE,  pch.cex = 15,
-  tl.cex = 6, lab_size = 2)
-# plots
-ggcorrplot(cor_synthetic, hc.order = TRUE, type = "lower",
-           lab = TRUE,  pch.cex = 15,
-  tl.cex = 6, lab_size = 2)
+# ##Correlation Analysis
+#   cor_real <- cor(original_pk, use = "complete.obs")
+#   cor_synthetic <- cor(augmented_data_15 %>% select(-iter_), use = "complete.obs")
+#   
+# # plots
+# ggcorrplot(cor_real, hc.order = TRUE, type = "lower",
+#            lab = TRUE,  pch.cex = 15,
+#   tl.cex = 6, lab_size = 2)
+# # plots
+# ggcorrplot(cor_synthetic, hc.order = TRUE, type = "lower",
+#            lab = TRUE,  pch.cex = 15,
+#   tl.cex = 6, lab_size = 2)
 ```
 
 Graphical exploration of distribution
 
 ```{r}
-group_comparison <-
-   original_pk %>% 
-  mutate(group="original") %>% 
-  bind_rows(augmented_data_15 %>% 
-              mutate(group="synthetic")) %>% 
-  select(-iter_)
-
-pm <- group_comparison %>% ggpairs(
-  ggplot2::aes(colour = group,alpha = 0.5),
-  upper = list(continuous = wrap("cor", size = 1.5)),
-  lower=list(combo=wrap("facethist", binwidth=0.5))) + 
-  theme(strip.text.x = element_text(size = 5),
-           strip.text.y = element_text(size = 5),axis.text = element_text(size = 5))
-pm
-ggsave("comparaison_distribution_PK_augmented_knn15.pdf")
+# group_comparison <-
+#    original_pk %>% 
+#   mutate(group="original") %>% 
+#   bind_rows(augmented_data_15 %>% 
+#               mutate(group="synthetic")) %>% 
+#   select(-iter_)
+# 
+# pm <- group_comparison %>% ggpairs(
+#   ggplot2::aes(colour = group,alpha = 0.5),
+#   upper = list(continuous = wrap("cor", size = 1.5)),
+#   lower=list(combo=wrap("facethist", binwidth=0.5))) + 
+#   theme(strip.text.x = element_text(size = 5),
+#            strip.text.y = element_text(size = 5),axis.text = element_text(size = 5))
+# pm
+# ggsave("comparaison_distribution_PK_augmented_knn15.pdf")
 
 ```
 
 Process and plot the data
 
 ```{r}
-avatar_augmented_knn15 <- augmented_data_15 %>% 
-    mutate(id = 1:nrow(augmented_data_15)) %>% 
-  pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
-  mutate(time = as.numeric(time)) %>% 
-  arrange(Visite, DOSE,AGE, time)
-original_pk_long <- original_pk %>% 
-   mutate(id = c(30:58)) %>% 
-  pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
-  mutate(time = as.numeric(time)) %>% 
-  arrange(Visite, DOSE,AGE, time)
+# avatar_augmented_knn15 <- augmented_data_15 %>% 
+#     mutate(id = 1:nrow(augmented_data_15)) %>% 
+#   pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
+#   mutate(time = as.numeric(time)) %>% 
+#   arrange(Visite, DOSE,AGE, time)
+# original_pk_long <- original_pk %>% 
+#    mutate(id = c(30:58)) %>% 
+#   pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
+#   mutate(time = as.numeric(time)) %>% 
+#   arrange(Visite, DOSE,AGE, time)
 
 ```
 
 Plots
 ```{r}
-## plots
-original_pk_long %>% mutate(group="original") %>% 
-  bind_rows(avatar_augmented_knn15 %>% mutate(group="synthetic")) %>% 
-  ggplot(aes(x = time, y = DV, color = group)) + 
-  geom_point(alpha = 0.2, size = 3) +
-  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
-  theme_bw()
-
-original_pk_long %>% mutate(group="original") %>% 
-  bind_rows(avatar_augmented_knn15 %>% 
-              mutate(group="synthetic")) %>% 
-  mutate(id = as.factor(id)) %>% 
-  ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
-  geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
-  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
-  theme_bw() + facet_wrap(~group)
+# ## plots
+# original_pk_long %>% mutate(group="original") %>% 
+#   bind_rows(avatar_augmented_knn15 %>% mutate(group="synthetic")) %>% 
+#   ggplot(aes(x = time, y = DV, color = group)) + 
+#   geom_point(alpha = 0.2, size = 3) +
+#   labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+#   theme_bw()
+# 
+# original_pk_long %>% mutate(group="original") %>% 
+#   bind_rows(avatar_augmented_knn15 %>% 
+#               mutate(group="synthetic")) %>% 
+#   mutate(id = as.factor(id)) %>% 
+#   ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
+#   geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
+#   labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+#   theme_bw() + facet_wrap(~group)
 ```
 
 
 Export long and wide
 
 ```{r}
-write_csv(avatar_augmented_knn15, file = "tacro_coeur_synthetic_augmented_knn15.csv")
-write_csv(augmented_data_15, file = "wide_tacro_coeur_synthetic_augmented_knn15.csv")
+# write_csv(avatar_augmented_knn15, file = "tacro_coeur_synthetic_augmented_knn15.csv")
+# write_csv(augmented_data_15, file = "wide_tacro_coeur_synthetic_augmented_knn15.csv")
 ```
 
 
@@ -921,106 +922,106 @@ write_csv(tvae, file = "wide_tacro_coeur_synthetic_tvae.csv")
 ### load the data
 
 ```{r}
-tvae_augmented <- read_csv("GAN_sortie_anonymisation240108/pkpop_tvae_data_large_v240108.dat")
+# tvae_augmented <- read_csv("GAN_sortie_anonymisation240108/pkpop_tvae_data_large_v240108.dat")
 ```
 
 
 ### summary distribution
 ```{r}
-summary(tvae_augmented)
-summary(original_pk)
+# summary(tvae_augmented)
+# summary(original_pk)
 ```
 
 Plot relationship C0 and CYP3A5
 
 ```{r}
-original_pk %>% ggplot(aes(x = as.factor(CYP3A5), y =conc_0)) +
-  geom_boxplot() +
-  labs(y = "C0 tacrolimus (mg/L)", x = "CYP3A5 status", title = "Original") +
-  theme_bw()
-
-tvae_augmented %>% ggplot(aes(x = as.factor(CYP3A5), y =conc_0)) +
-  geom_boxplot() +
-  labs(y = "C0 tacrolimus (mg/L)", x = "CYP3A5 status", title = "Synthetic") +
-  theme_bw()
+# original_pk %>% ggplot(aes(x = as.factor(CYP3A5), y =conc_0)) +
+#   geom_boxplot() +
+#   labs(y = "C0 tacrolimus (mg/L)", x = "CYP3A5 status", title = "Original") +
+#   theme_bw()
+# 
+# tvae_augmented %>% ggplot(aes(x = as.factor(CYP3A5), y =conc_0)) +
+#   geom_boxplot() +
+#   labs(y = "C0 tacrolimus (mg/L)", x = "CYP3A5 status", title = "Synthetic") +
+#   theme_bw()
 ```
 
 
 ### plot correlation
 ```{r}
 
-##Correlation Analysis
-  cor_real <- cor(original_pk, use = "complete.obs")
-  cor_synthetic <- cor(tvae_augmented %>% select(-SEX), use = "complete.obs")
-  
-# plots
-ggcorrplot(cor_real, hc.order = TRUE, type = "lower",
-           lab = TRUE,  pch.cex = 5,
-  tl.cex = 6, lab_size = 2)
-# plots
-ggcorrplot(cor_synthetic, hc.order = TRUE, type = "lower",
-           lab = TRUE,  pch.cex = 5,
-  tl.cex = 6, lab_size = 2)
+# ##Correlation Analysis
+#   cor_real <- cor(original_pk, use = "complete.obs")
+#   cor_synthetic <- cor(tvae_augmented %>% select(-SEX), use = "complete.obs")
+#   
+# # plots
+# ggcorrplot(cor_real, hc.order = TRUE, type = "lower",
+#            lab = TRUE,  pch.cex = 5,
+#   tl.cex = 6, lab_size = 2)
+# # plots
+# ggcorrplot(cor_synthetic, hc.order = TRUE, type = "lower",
+#            lab = TRUE,  pch.cex = 5,
+#   tl.cex = 6, lab_size = 2)
 ```
 
 Graphical exploration of distribution
 
 ```{r}
-group_comparison <-
-   original_pk %>% 
-  mutate(group="original") %>% 
-  bind_rows(tvae_augmented %>% 
-              mutate(group="synthetic")) 
-
-pm <- group_comparison %>% ggpairs(
-  ggplot2::aes(colour = group,alpha = 0.5),
-  upper = list(continuous = wrap("cor", size = 1.5)),
-  lower=list(combo=wrap("facethist", binwidth=0.5))) + 
-  theme(strip.text.x = element_text(size = 5),
-           strip.text.y = element_text(size = 5),axis.text = element_text(size = 5))
-pm
-ggsave("comparaison_distribution_PK_tvae_augmented.pdf")
+# group_comparison <-
+#    original_pk %>% 
+#   mutate(group="original") %>% 
+#   bind_rows(tvae_augmented %>% 
+#               mutate(group="synthetic")) 
+# 
+# pm <- group_comparison %>% ggpairs(
+#   ggplot2::aes(colour = group,alpha = 0.5),
+#   upper = list(continuous = wrap("cor", size = 1.5)),
+#   lower=list(combo=wrap("facethist", binwidth=0.5))) + 
+#   theme(strip.text.x = element_text(size = 5),
+#            strip.text.y = element_text(size = 5),axis.text = element_text(size = 5))
+# pm
+# ggsave("comparaison_distribution_PK_tvae_augmented.pdf")
 
 ```
 
 Process and plot the data
 
 ```{r}
-tvae_augmented_long <- tvae_augmented %>%
-  mutate(id = 1:nrow(tvae_augmented)) %>% 
-  pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
-  mutate(time = as.numeric(time)) %>% 
-  arrange(id, time) %>% 
-  relocate(id)
+# tvae_augmented_long <- tvae_augmented %>%
+#   mutate(id = 1:nrow(tvae_augmented)) %>% 
+#   pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
+#   mutate(time = as.numeric(time)) %>% 
+#   arrange(id, time) %>% 
+#   relocate(id)
 
 ```
 
 Plot the data
 
 ```{r}
-original_pk_long %>% mutate(group="original") %>% 
-  bind_rows(tvae_augmented_long %>% mutate(group="synthetic")) %>% 
-              ggplot(aes(x = time, y = DV, color = group)) + geom_point() +
-  geom_point(alpha = 0.2, size = 3) +
-  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
-  theme_bw()
-
-
-original_pk_long %>% mutate(group="original") %>% 
-  bind_rows(tvae_augmented_long %>% 
-              mutate(group="synthetic")) %>% 
-  mutate(id = as.factor(id)) %>% 
-  ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
-  geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
-  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
-  theme_bw() + facet_wrap(~group)
+# original_pk_long %>% mutate(group="original") %>% 
+#   bind_rows(tvae_augmented_long %>% mutate(group="synthetic")) %>% 
+#               ggplot(aes(x = time, y = DV, color = group)) + geom_point() +
+#   geom_point(alpha = 0.2, size = 3) +
+#   labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+#   theme_bw()
+# 
+# 
+# original_pk_long %>% mutate(group="original") %>% 
+#   bind_rows(tvae_augmented_long %>% 
+#               mutate(group="synthetic")) %>% 
+#   mutate(id = as.factor(id)) %>% 
+#   ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
+#   geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
+#   labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+#   theme_bw() + facet_wrap(~group)
 ```
 
 
 Export long and wide
 ```{r}
-write_csv(tvae_augmented_long, file = "tacro_coeur_synthetic_tvae_augmented.csv")
-write_csv(tvae_augmented, file = "wide_tacro_coeur_synthetic_tvae_augmented.csv")
+# write_csv(tvae_augmented_long, file = "tacro_coeur_synthetic_tvae_augmented.csv")
+# write_csv(tvae_augmented, file = "wide_tacro_coeur_synthetic_tvae_augmented.csv")
 
 ```
 
@@ -1140,136 +1141,161 @@ write_csv(ctgan, file = "wide_tacro_coeur_synthetic_ctgan.csv")
 ### load the data
 
 ```{r}
-ctgan_augmented <- read_csv("GAN_sortie_anonymisation240108/pkpop_ctgan_data_large_v240108.dat")
+# ctgan_augmented <- read_csv("GAN_sortie_anonymisation240108/pkpop_ctgan_data_large_v240108.dat")
 ```
 
 
 ### summary distribution
 ```{r}
-summary(ctgan_augmented)
-summary(original_pk)
+# summary(ctgan_augmented)
+# summary(original_pk)
 ```
 
 Plot relationship C0 and CYP3A5
 
 ```{r}
-original_pk %>% ggplot(aes(x = as.factor(CYP3A5), y =conc_0)) +
-  geom_boxplot() +
-  labs(y = "C0 tacrolimus (mg/L)", x = "CYP3A5 status", title = "Original") +
-  theme_bw()
-
-ctgan_augmented %>% ggplot(aes(x = as.factor(CYP3A5), y =conc_0)) +
-  geom_boxplot() +
-  labs(y = "C0 tacrolimus (mg/L)", x = "CYP3A5 status", title = "Synthetic") +
-  theme_bw()
+# original_pk %>% ggplot(aes(x = as.factor(CYP3A5), y =conc_0)) +
+#   geom_boxplot() +
+#   labs(y = "C0 tacrolimus (mg/L)", x = "CYP3A5 status", title = "Original") +
+#   theme_bw()
+# 
+# ctgan_augmented %>% ggplot(aes(x = as.factor(CYP3A5), y =conc_0)) +
+#   geom_boxplot() +
+#   labs(y = "C0 tacrolimus (mg/L)", x = "CYP3A5 status", title = "Synthetic") +
+#   theme_bw()
 ```
 
 
 ### plot correlation
 ```{r}
 
-##Correlation Analysis
-  cor_real <- cor(original_pk, use = "complete.obs")
-  cor_synthetic <- cor(ctgan_augmented %>% select(-SEX), use = "complete.obs")
-  
-# plots
-ggcorrplot(cor_real, hc.order = TRUE, type = "lower",
-           lab = TRUE,  pch.cex = 5,
-  tl.cex = 6, lab_size = 2)
-# plots
-ggcorrplot(cor_synthetic, hc.order = TRUE, type = "lower",
-           lab = TRUE,  pch.cex = 5,
-  tl.cex = 6, lab_size = 2)
+# ##Correlation Analysis
+#   cor_real <- cor(original_pk, use = "complete.obs")
+#   cor_synthetic <- cor(ctgan_augmented %>% select(-SEX), use = "complete.obs")
+#   
+# # plots
+# ggcorrplot(cor_real, hc.order = TRUE, type = "lower",
+#            lab = TRUE,  pch.cex = 5,
+#   tl.cex = 6, lab_size = 2)
+# # plots
+# ggcorrplot(cor_synthetic, hc.order = TRUE, type = "lower",
+#            lab = TRUE,  pch.cex = 5,
+#   tl.cex = 6, lab_size = 2)
 ```
 
 Graphical exploration of distribution
 
 ```{r}
-group_comparison <-
-   original_pk %>% 
-  mutate(group="original") %>% 
-  bind_rows(ctgan_augmented %>% 
-              mutate(group="synthetic")) 
-
-pm <- group_comparison %>% ggpairs(
-  ggplot2::aes(colour = group,alpha = 0.5),
-  upper = list(continuous = wrap("cor", size = 1.5)),
-  lower=list(combo=wrap("facethist", binwidth=0.5))) + 
-  theme(strip.text.x = element_text(size = 5),
-           strip.text.y = element_text(size = 5),axis.text = element_text(size = 5))
-pm
-ggsave("comparaison_distribution_PK_ctgan_augmented.pdf")
+# group_comparison <-
+#    original_pk %>% 
+#   mutate(group="original") %>% 
+#   bind_rows(ctgan_augmented %>% 
+#               mutate(group="synthetic")) 
+# 
+# pm <- group_comparison %>% ggpairs(
+#   ggplot2::aes(colour = group,alpha = 0.5),
+#   upper = list(continuous = wrap("cor", size = 1.5)),
+#   lower=list(combo=wrap("facethist", binwidth=0.5))) + 
+#   theme(strip.text.x = element_text(size = 5),
+#            strip.text.y = element_text(size = 5),axis.text = element_text(size = 5))
+# pm
+# ggsave("comparaison_distribution_PK_ctgan_augmented.pdf")
 
 ```
 
 Process and plot the data
 
 ```{r}
-ctgan_augmented_long <- ctgan_augmented %>%
-  mutate(id = 1:nrow(ctgan_augmented)) %>% 
-  pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
-  mutate(time = as.numeric(time)) %>% 
-  arrange(id, time) %>% 
-  relocate(id)
+# ctgan_augmented_long <- ctgan_augmented %>%
+#   mutate(id = 1:nrow(ctgan_augmented)) %>% 
+#   pivot_longer(cols = starts_with("conc_"), names_to = "time", values_to = "DV", names_prefix = "conc_") %>%
+#   mutate(time = as.numeric(time)) %>% 
+#   arrange(id, time) %>% 
+#   relocate(id)
 
 ```
 
 Plot the data
 
 ```{r}
-original_pk_long %>% mutate(group="original") %>% 
-  bind_rows(ctgan_augmented_long %>% mutate(group="synthetic")) %>% 
-              ggplot(aes(x = time, y = DV, color = group)) + geom_point() +
-  geom_point(alpha = 0.2, size = 3) +
-  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
-  theme_bw()
-
-
-original_pk_long %>% mutate(group="original") %>% 
-  bind_rows(ctgan_augmented_long %>% 
-              mutate(group="synthetic")) %>% 
-  mutate(id = as.factor(id)) %>% 
-  ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
-  geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
-  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
-  theme_bw() + facet_wrap(~group)
+# original_pk_long %>% mutate(group="original") %>% 
+#   bind_rows(ctgan_augmented_long %>% mutate(group="synthetic")) %>% 
+#               ggplot(aes(x = time, y = DV, color = group)) + geom_point() +
+#   geom_point(alpha = 0.2, size = 3) +
+#   labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+#   theme_bw()
+# 
+# 
+# original_pk_long %>% mutate(group="original") %>% 
+#   bind_rows(ctgan_augmented_long %>% 
+#               mutate(group="synthetic")) %>% 
+#   mutate(id = as.factor(id)) %>% 
+#   ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
+#   geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
+#   labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+#   theme_bw() + facet_wrap(~group)
 ```
 
 
 Export long and wide
 ```{r}
-write_csv(ctgan_augmented_long, file = "tacro_coeur_synthetic_ctgan_augmented.csv")
-write_csv(ctgan_augmented, file = "wide_tacro_coeur_synthetic_ctgan_augmented.csv")
+# write_csv(ctgan_augmented_long, file = "tacro_coeur_synthetic_ctgan_augmented.csv")
+# write_csv(ctgan_augmented, file = "wide_tacro_coeur_synthetic_ctgan_augmented.csv")
 
 ```
 
 
-## global spahghetti plot
+## global spahghetti plot tacro and dapto
 
 ```{r}
-original_pk_long %>% mutate(group="original") %>% 
-  bind_rows(avatar_knn5 %>% 
-              mutate(group="Avatar_knn5")) %>% 
-    bind_rows(avatar_knn15 %>% 
-              mutate(group="Avatar_knn15")) %>% 
-    bind_rows(avatar_augmented_knn5 %>% 
-              mutate(group="Avatar_augmented_knn5")) %>% 
-      bind_rows(avatar_augmented_knn15 %>% 
-              mutate(group="Avatar_augmented_knn15")) %>% 
-    bind_rows(tvae_long %>% 
-              mutate(group="TVAE")) %>% 
-    bind_rows(tvae_augmented_long %>% 
-              mutate(group="TVAE_augmented")) %>%
-    bind_rows(ctgan_long %>% 
+original_pk_long %>% mutate(group="original") %>%
+  bind_rows(avatar_knn5 %>%
+              mutate(group="Avatar_knn5")) %>%
+    bind_rows(avatar_knn15 %>%
+              mutate(group="Avatar_knn15")) %>%
+    bind_rows(tvae_long %>%
+              mutate(group="TVAE")) %>%
+    bind_rows(ctgan_long %>%
               mutate(group="CTGAN")) %>%
-    bind_rows(ctgan_augmented_long %>% 
-              mutate(group="CTGAN_augmented")) %>%
-  mutate(id = as.factor(id)) %>% 
+  mutate(id = as.factor(id)) %>%
   ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
   geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
-  labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
-  theme_bw() + facet_wrap(~group)
+  labs(x = "Time (h)", y = "Tacrolimus concentration(mg/L)")+
+  theme_bw() + facet_wrap(~group) +
+  scale_x_continuous(
+    limits = c(0, 12),            # Set x-axis limits
+    breaks = seq(0, 12, by = 2)   # Set x-axis ticks every 2 hours
+  ) +
+  global_spaghetti_plot_dapto +
+  plot_annotation(tag_levels = 'A')
 ggsave("Figure1.pdf")
+```
+
+```{r}
+# previous version
+# original_pk_long %>% mutate(group="original") %>% 
+#   bind_rows(avatar_knn5 %>% 
+#               mutate(group="Avatar_knn5")) %>% 
+#     bind_rows(avatar_knn15 %>% 
+#               mutate(group="Avatar_knn15")) %>% 
+#     bind_rows(avatar_augmented_knn5 %>% 
+#               mutate(group="Avatar_augmented_knn5")) %>% 
+#       bind_rows(avatar_augmented_knn15 %>% 
+#               mutate(group="Avatar_augmented_knn15")) %>% 
+#     bind_rows(tvae_long %>% 
+#               mutate(group="TVAE")) %>% 
+#     bind_rows(tvae_augmented_long %>% 
+#               mutate(group="TVAE_augmented")) %>%
+#     bind_rows(ctgan_long %>% 
+#               mutate(group="CTGAN")) %>%
+#     bind_rows(ctgan_augmented_long %>% 
+#               mutate(group="CTGAN_augmented")) %>%
+#   mutate(id = as.factor(id)) %>% 
+#   ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
+#   geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
+#   labs(x = "Time (h)", y = "tacrolimus concentration(mg/L)")+
+#   theme_bw() + facet_wrap(~group)
+# ggsave("Figure1.pdf")
 ```
 
 # table one
@@ -1282,18 +1308,18 @@ grouped_data <- original_pk %>% mutate(group="original") %>%
               mutate(group="Avatar_knn5")) %>% 
     bind_rows(avatars_tibble_knn15 %>% 
               mutate(group="Avatar_knn15")) %>% 
-    bind_rows(augmented_data_5 %>% 
-              mutate(group="Avatar_augmented_knn5")) %>% 
-      bind_rows(augmented_data_15 %>% 
-              mutate(group="Avatar_augmented_knn15")) %>% 
+    # bind_rows(augmented_data_5 %>% 
+    #           mutate(group="Avatar_augmented_knn5")) %>% 
+    #   bind_rows(augmented_data_15 %>% 
+              # mutate(group="Avatar_augmented_knn15")) %>% 
     bind_rows(tvae %>% 
               mutate(group="TVAE")) %>% 
-    bind_rows(tvae_augmented %>% 
-              mutate(group="TVAE_augmented")) %>%
+    # bind_rows(tvae_augmented %>% 
+    #           mutate(group="TVAE_augmented")) %>%
     bind_rows(ctgan %>% 
-              mutate(group="CTGAN")) %>%
-    bind_rows(ctgan_augmented %>% 
-              mutate(group="CTGAN_augmented"))
+              mutate(group="CTGAN")) 
+    # bind_rows(ctgan_augmented %>% 
+    #           mutate(group="CTGAN_augmented"))
 ```
 
 
