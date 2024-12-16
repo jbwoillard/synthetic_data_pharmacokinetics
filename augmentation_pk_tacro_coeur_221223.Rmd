@@ -1248,7 +1248,8 @@ Export long and wide
 ## global spahghetti plot tacro and dapto
 
 ```{r}
-original_pk_long %>% mutate(group="original") %>%
+global_spaghetti_plot_dapto + 
+  original_pk_long %>% mutate(group="original") %>%
   bind_rows(avatar_knn5 %>%
               mutate(group="Avatar_knn5")) %>%
     bind_rows(avatar_knn15 %>%
@@ -1258,15 +1259,15 @@ original_pk_long %>% mutate(group="original") %>%
     bind_rows(ctgan_long %>%
               mutate(group="CTGAN")) %>%
   mutate(id = as.factor(id)) %>%
-  ggplot(aes(x = time, y = DV, color = id)) +  geom_line(show.legend = FALSE)+
+  mutate(DV_mcg = DV * 1000) %>% 
+  ggplot(aes(x = time, y = DV_mcg, color = id)) +  geom_line(show.legend = FALSE)+
   geom_point(alpha = 0.2, size = 3, show.legend = FALSE) +
-  labs(x = "Time (h)", y = "Tacrolimus concentration(mg/L)")+
+  labs(x = "Time (h)", y = "Tacrolimus concentration(µg/L)")+
   theme_bw() + facet_wrap(~group) +
   scale_x_continuous(
     limits = c(0, 12),            # Set x-axis limits
     breaks = seq(0, 12, by = 2)   # Set x-axis ticks every 2 hours
   ) +
-  global_spaghetti_plot_dapto +
   plot_annotation(tag_levels = 'A')
 ggsave("Figure1.pdf")
 ```
